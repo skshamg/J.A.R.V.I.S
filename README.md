@@ -1,77 +1,59 @@
-# PROJECT JARVIS // Autonomous Desktop AI Agent
+# PROJECT J.A.R.V.I.S. // Autonomous Multimodal Desktop Agent
 
-A modular, multimodal desktop assistant built in Python and powered by Google Gemini Flash models. Designed with an autonomous tool-calling pipeline, localized persistent memory, spatial vision, and a glassmorphic PyQt6 desktop HUD.
-
----
-
-## Evolution: Mark-1 vs. Mark-2
-
-| Capability | Mark-1 (`main.py`) | Mark-2 (`mark2_app.py`) |
-| :--- | :--- | :--- |
-| **Interface** | Terminal CLI prompt | Frameless PyQt6 Glassmorphism HUD |
-| **Visual Telemetry** | Plain text printouts | Live Arc Reactor animation + CPU/RAM/BAT dials |
-| **Input System** | Keyboard typing | Hands-free wake word (`Jarvis`) & Push-to-Talk |
-| **Language Support** | Standard English | Indian-English (`en-IN`) acoustic phonetic tuning |
-| **Sensory Cortex** | Auditory synthesis only | Multimodal Spatial Vision (Screen analysis) |
-| **OS Actuation** | File I/O & App launch | Mouse clicking, keyboard simulation, web navigation |
-| **Audio Controls** | Blocking speech playback | Non-blocking speech with instant `Esc` interrupt |
+An evolving, multimodal desktop intelligence system built in Python and powered by Google Gemini Flash models. Engineered with an autonomous ReAct loop, localized persistent memory, spatial vision, OS-level actuation, ambient hardware monitoring, and a glassmorphic PyQt6 desktop HUD.
 
 ---
 
-## Features
+## Architectural Evolution: Mark-1 to Mark-3
 
-- **Spatial Vision:** Takes instant monitor captures to debug code, analyze schematics, or summarize open browser tabs via Gemini 3.5 Flash.
-- **Persistent Neural State:** Built-in SQLite memory engine (`mark1_memory.db`) retaining preferences and user facts across sessions.
-- **Acoustic & Subtitle UI:** Frequency-modulated system chimes paired with live transcriptions directly inside the HUD.
-- **Fail-Safe Core:** Multi-model pool rotation (`gemini-3.5-flash-lite`, `gemini-3.8-flash`, `gemini-3.5-flash`) handling rate limits and network latency seamlessly.
+| Capability | Mark-1 (`main.py`) | Mark-2 (`mark2_app.py`) | Mark-3 (`mark3_app.py`) |
+| :--- | :--- | :--- | :--- |
+| **Interface** | Terminal CLI prompt | Frameless PyQt6 HUD | System Tray Daemon + Auto-Summon HUD |
+| **Execution Loop** | Single-turn Q&A | Single-action tool calling | Autonomous Multi-Step ReAct Planning |
+| **Actuation Speed** | N/A | Slow typing simulation | 0.05s Native Clipboard Macros (`clip.exe`) |
+| **In-Place Editing** | File overwriting | Basic clipboard paste | In-place window read/rewrite + macro tools |
+| **Input Channels** | Keyboard text | Push-to-Talk & Wake Word | Adaptive audio ring-buffer & low-latency STT |
+| **Screen Vision** | None | Full-screen visual sweep | Ephemeral vision buffer with memory pruning |
+| **OS Integration** | Basic file I/O | App launch & window typing | PowerShell sandbox + Universal Start search |
+| **Background State** | Process stops on exit | Always visible window | Silent tray resident + Ambient vitals monitor |
 
 ---
 
-## Controls & Shortcuts (Mark-2)
+## Controls & Hotkeys
 
-- **Wake Word:** Say `"Jarvis"` or `"Mark"` to activate hands-free listening.
-- **Push-to-Talk:** Press `Ctrl + Shift + Space` (or click the Arc Reactor) to give a vocal command.
-- **Optical Sweep (Vision):** Press `Ctrl + Shift + V` to capture your active screen and speak your query.
-- **Emergency Silence:** Press `Esc` at any time to instantly cut off speech and return to standby.
+- **Push-to-Talk:** Press `Ctrl + Shift + Space` (or click the Arc Reactor) to give vocal commands.
+- **Optical Sweep (Vision):** Press `Ctrl + Shift + V` to inspect your active screen and speak your query.
+- **Stealth Toggle:** Press `Ctrl + Shift + H` to instantly hide/summon the HUD to/from the Windows System Tray.
+- **Emergency Abort:** Press `Esc` to immediately cut off speech playback and cancel running missions.
+- **Hands-Free Wake Word:** Say `"Jarvis"` at any time to wake the agent from background standby.
 
 ---
 
 ## Project Structure
 
 ```text
-MARK-1/
+J.A.R.V.I.S/
 ├── core/
-│   ├── audio_fx.py      # Native zero-dependency UI chimes
-│   ├── brain.py         # Gemini multimodal brain & tool execution
-│   ├── ears.py          # Adaptive en-IN speech recognition
-│   ├── memory.py        # SQLite persistent memory engine
-│   ├── speech.py        # Non-blocking neural TTS & audio sanitizer
-│   └── wake_word.py     # Background voice activity detector
+│   ├── agent_loop.py      # Resilient ReAct planner & multi-step executor
+│   ├── ambient_monitor.py # Background hardware & battery anomaly detector
+│   ├── audio_fx.py        # Native zero-dependency UI chimes
+│   ├── brain.py           # Gemini multimodal brain & conversation core
+│   ├── ears.py            # Dynamic acoustic floor & speech-to-text pipeline
+│   ├── memory.py          # SQLite localized memory engine
+│   ├── speech.py          # Non-blocking neural TTS & audio sanitizer
+│   └── wake_word.py       # Continuous circular ring-buffer wake-word engine
 ├── hud/
-│   ├── hud_window.py    # PyQt6 glassmorphism overlay & Arc Reactor
-│   └── style.css        # QSS sci-fi styling sheet
+│   ├── hud_window.py      # Glassmorphic PyQt6 HUD & 60 FPS Arc Reactor
+│   ├── style.css          # QSS cyberpunk design system
+│   └── tray_manager.py    # Windows Notification Area (System Tray) daemon
 ├── tools/
-│   ├── action_tools.py  # Mouse & keyboard OS actuation
-│   ├── file_tools.py    # Autonomous file manipulation
-│   ├── sys_tools.py     # Hardware telemetry & app launcher
-│   └── vision_tools.py  # Display buffer capture pipeline
-├── main.py              # Mark-1 terminal entry point
-├── mark2_app.py         # Mark-2 master GUI entry point
-├── requirements.txt     # Python environment dependencies
-└── .gitignore           # Ignores .env and SQLite binaries
-
-
-Install dependencies:
-pip install -r requirements.txt
-
-Configure API Key:
-Create a .env file in the root directory:
-Code snippet
-GEMINI_API_KEY=your_gemini_api_key_here
-
-Launch:
-For Mark-2 (Full HUD Experience):
-python mark2_app.py
-
-For Mark-1 (Lightweight Terminal Mode):
-python main.py
+│   ├── action_tools.py    # Sub-second OS clipboard macros & in-place text editor
+│   ├── file_tools.py      # File read, write, append, and search handlers
+│   ├── shell_tools.py     # Safe PowerShell execution sandbox
+│   ├── sys_tools.py       # Hardware telemetry & universal Start Menu search
+│   └── vision_tools.py    # Display buffer capture pipeline
+├── main.py                # Mark-1 terminal entry point
+├── mark2_app.py           # Mark-2 visual HUD entry point
+├── mark3_app.py           # Mark-3 autonomous system daemon (Master)
+├── requirements.txt       # Python environment dependencies
+└── .gitignore             # Ignores .env and local databases

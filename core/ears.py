@@ -25,20 +25,30 @@ class EarEngine:
             normalized = re.sub(pattern, replacement, normalized, flags=re.IGNORECASE)
         return normalized
 
-    def listen_smart(self, max_duration: int = 35, silence_tolerance: float = 3.0) -> str:
+    def listen_smart(self, max_duration: int = 35, silence_tolerance: float = 2.5) -> str:
         """
-        Dynamically captures audio allowing for complex, long thoughts.
-        Tolerates up to 3.0 seconds of mid-sentence thinking pauses.
+        Dynamically adapts to ambient background levels and records continuous speech.
         """
-        chunk_size = int(self.sample_rate * 0.2)
+        chunk_size = int(self.sample_rate * 0.15)
         recorded_frames = []
 
         speech_started = False
         silence_start_time = None
         start_time = time.time()
-        threshold = 360  # Calibrated for ambient laptop microphones
 
+        # Dynamic room calibration on each listen call
+        ambient_samples = []
         with sd.InputStream(samplerate=self.sample_rate, channels=1, dtype="int16") as stream:
+            # Measure room acoustics for the first 250ms
+            for _ in range(2):
+                data, _ = stream.read(chunk_size)
+                arr = np.frombuffer(data, dtype=np.int16)
+                ambient_samples.append(np.sqrt(np.mean(arr.astype(float) ** 2)))
+                recorded_frames.append(data)
+
+            noise_floor = np.mean(ambient_samples)
+            speech_threshold = max(90, noise_floor * 1.5 + 40)
+
             while (time.time() - start_time) < max_duration:
                 data, _ = stream.read(chunk_size)
                 audio_array = np.frombuffer(data, dtype=np.int16)
@@ -46,17 +56,16 @@ class EarEngine:
 
                 recorded_frames.append(data)
 
-                if volume > threshold:
+                if volume > speech_threshold:
                     speech_started = True
                     silence_start_time = None
                 elif speech_started:
                     if silence_start_time is None:
                         silence_start_time = time.time()
                     elif (time.time() - silence_start_time) > silence_tolerance:
-                        # User has concluded speaking
                         break
-                elif (time.time() - start_time) > 5.5:
-                    # No speech detected within the initial 5.5 seconds
+                elif (time.time() - start_time) > 5.0:
+                    # No speech detected within initial 5 seconds
                     return ""
 
         if not recorded_frames or not speech_started:

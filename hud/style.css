@@ -74,6 +74,7 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
 }
 
 /* Permanent Shortcut Cheat-Sheet Footer */
+/* Permanent Shortcut Cheat-Sheet Footer */
 QLabel#ShortcutFooter {
     color: rgba(0, 240, 255, 0.7);
     background-color: rgba(0, 240, 255, 0.05);

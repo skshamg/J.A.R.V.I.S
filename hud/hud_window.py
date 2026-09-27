@@ -5,7 +5,7 @@ import psutil
 from PyQt6.QtCore import Qt, QTimer, QPoint, pyqtSignal
 from PyQt6.QtGui import QPainter, QColor, QPen, QBrush
 from PyQt6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QScrollArea
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QScrollArea
 )
 
 
@@ -42,7 +42,7 @@ class ArcReactorWidget(QWidget):
 
         cx, cy = self.width() / 2, self.height() / 2
 
-        # 1. Outer Halo
+        # 1. Outer Diffuse Halo
         glow_intensity = int(140 + 70 * math.sin(self.pulse_phase))
         halo_color = QColor(self.core_color.red(), self.core_color.green(), self.core_color.blue(), int(glow_intensity * 0.25))
         painter.setBrush(QBrush(halo_color))
@@ -76,7 +76,7 @@ class ArcReactorWidget(QWidget):
 
         painter.restore()
 
-        # 4. Segmented Ring
+        # 4. Segmented Counter-Rotating Ring
         painter.save()
         painter.translate(cx, cy)
         painter.rotate(-self.rotation_angle * 1.5)
@@ -85,12 +85,12 @@ class ArcReactorWidget(QWidget):
         painter.drawEllipse(-26, -26, 52, 52)
         painter.restore()
 
-        # 5. Inner Core
+        # 5. Inner Core Ring
         core_pen = QPen(QColor(self.core_color.red(), self.core_color.green(), self.core_color.blue(), 240), 2)
         painter.setPen(core_pen)
         painter.drawEllipse(int(cx - 16), int(cy - 16), 32, 32)
 
-        # 6. Central Node
+        # 6. Central Plasma Node
         core_alpha = int(180 + 75 * math.sin(self.pulse_phase))
         core_glow = QColor(220, 245, 255, core_alpha)
         painter.setBrush(QBrush(core_glow))
@@ -104,10 +104,11 @@ class JarvisHUD(QWidget):
     def __init__(self):
         super().__init__()
 
+        # Use Tool instead of SubWindow to avoid desktop hierarchy deadlocks
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
             Qt.WindowType.WindowStaysOnTopHint |
-            Qt.WindowType.SubWindow
+            Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.resize(520, 290)
@@ -116,6 +117,19 @@ class JarvisHUD(QWidget):
         self._build_ui()
         self._load_css()
         self._start_telemetry_loop()
+
+    def hideEvent(self, event):
+        """Pause 60 FPS animation loop when hidden to stop GPU/CPU burn."""
+        self.reactor.anim_timer.stop()
+        self.telemetry_timer.stop()
+        super().hideEvent(event)
+
+    def showEvent(self, event):
+        """Resume animations instantly upon waking up."""
+        self.reactor.anim_timer.start(16)
+        self.telemetry_timer.start(1500)
+        self._refresh_telemetry()
+        super().showEvent(event)
 
     def _build_ui(self):
         main_layout = QVBoxLayout(self)
@@ -126,16 +140,15 @@ class JarvisHUD(QWidget):
         frame_layout = QVBoxLayout(self.frame)
         frame_layout.setContentsMargins(18, 14, 18, 12)
 
-        # Top row: Brand + Telemetry + Reactor
         top_row = QHBoxLayout()
         info_layout = QVBoxLayout()
 
         header_layout = QHBoxLayout()
         title_box = QVBoxLayout()
 
-        self.title_lbl = QLabel("MARK-II")
+        self.title_lbl = QLabel("J.A.R.V.I.S.")
         self.title_lbl.setObjectName("TitleLabel")
-        self.sub_lbl = QLabel("AUTONOMOUS DESKTOP CORE")
+        self.sub_lbl = QLabel("MARK-III AUTONOMOUS AGENT CORE")
         self.sub_lbl.setObjectName("SubtitleLabel")
 
         title_box.addWidget(self.title_lbl)
@@ -163,13 +176,12 @@ class JarvisHUD(QWidget):
         frame_layout.addLayout(top_row)
         frame_layout.addSpacing(6)
 
-        # Middle row: Auto-Scrolling Subtitle Box
         self.scroll_area = QScrollArea()
         self.scroll_area.setObjectName("SubtitleScrollArea")
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFixedHeight(85)
 
-        self.subtitle_content = QLabel("Jarvis: Systems online. Awaiting your instruction...")
+        self.subtitle_content = QLabel("J.A.R.V.I.S.: Mark Three online. Systems nominal...")
         self.subtitle_content.setObjectName("SubtitleContent")
         self.subtitle_content.setWordWrap(True)
         self.subtitle_content.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
@@ -178,8 +190,7 @@ class JarvisHUD(QWidget):
         frame_layout.addWidget(self.scroll_area)
         frame_layout.addSpacing(6)
 
-        # Bottom row: Permanent Shortcut Cheat-Sheet
-        self.shortcut_footer = QLabel("KEYS: [Ctrl+Shift+Space] Mic  |  [Ctrl+Shift+V] Vision  |  [Esc] Mute  |  Wake: 'Jarvis'")
+        self.shortcut_footer = QLabel("KEYS: [Ctrl+Shift+Space] Mic | [Ctrl+Shift+V] Vision | [Ctrl+Shift+H] Hide/Show | [Esc] Mute")
         self.shortcut_footer.setObjectName("ShortcutFooter")
         self.shortcut_footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
         frame_layout.addWidget(self.shortcut_footer)
@@ -193,9 +204,9 @@ class JarvisHUD(QWidget):
                 self.setStyleSheet(f.read())
 
     def _start_telemetry_loop(self):
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self._refresh_telemetry)
-        self.timer.start(1500)
+        self.telemetry_timer = QTimer(self)
+        self.telemetry_timer.timeout.connect(self._refresh_telemetry)
+        self.telemetry_timer.start(1500)
         self._refresh_telemetry()
 
     def _refresh_telemetry(self):
@@ -206,9 +217,7 @@ class JarvisHUD(QWidget):
         self.telemetry_lbl.setText(f"CPU: {cpu}%   RAM: {ram}%   BAT: {bat_str}")
 
     def set_agent_state(self, state: str):
-        """Updates the status badge without touching the subtitle text."""
         self.state_badge.setText(state.upper())
-
         if "VISION" in state.upper():
             color = QColor(179, 136, 255)
             self.reactor.set_theme_color(color)
@@ -235,13 +244,10 @@ class JarvisHUD(QWidget):
             )
 
     def set_subtitles(self, speaker: str, text: str):
-        """Updates the subtitle stream and automatically scrolls to the bottom."""
-        tag_color = "#00e5ff" if speaker == "MARK-II" else ("#00ff88" if speaker == "YOU" else "#ffaa00")
+        tag_color = "#00e5ff" if speaker in ["MARK-III", "J.A.R.V.I.S.", "COMPLETE"] else ("#00ff88" if speaker == "YOU" else "#ffaa00")
         formatted = f'<p style="margin: 0px 0px 4px 0px;"><span style="color: {tag_color}; font-weight: bold;">[{speaker}]</span> {text}</p>'
         self.subtitle_content.setText(formatted)
-
-        # Scroll to bottom smoothly
-        QTimer.singleShot(50, lambda: self.scroll_area.verticalScrollBar().setValue(
+        QTimer.singleShot(40, lambda: self.scroll_area.verticalScrollBar().setValue(
             self.scroll_area.verticalScrollBar().maximum()
         ))
 

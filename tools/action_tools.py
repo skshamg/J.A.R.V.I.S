@@ -1,3 +1,4 @@
+import os
 import subprocess
 import time
 import webbrowser
@@ -13,36 +14,52 @@ def paste_text(text: str, press_enter: bool = False) -> str:
         process = subprocess.Popen(["clip"], stdin=subprocess.PIPE, close_fds=True)
         process.communicate(input=text.encode("utf-16"))
 
-        time.sleep(0.05)
+        time.sleep(0.08)
         pyautogui.hotkey("ctrl", "v")
 
         if press_enter:
             pyautogui.press("enter")
 
-        return f"Successfully pasted content into the active window."
+        return f"Successfully pasted {len(text)} characters into active window."
     except Exception as e:
         return f"Failed to paste text: {e}"
 
 
-def read_active_window_text() -> str:
+def create_notepad_note(title: str, content: str) -> str:
     """
-    Selects and reads all text currently open in the focused window
-    (Notepad, VS Code, Word, browser text box) without modifying it.
+    Launches Notepad, waits for window focus, opens a clean document tab,
+    and pastes the formatted content in one seamless autonomous action.
+    Use this whenever instructed to write notes, logs, or reports in Notepad.
     """
     try:
-        # Clear clipboard first
+        # 1. Launch fresh Notepad window
+        subprocess.Popen(["notepad.exe"])
+        time.sleep(0.4)  # Wait for OS window initialization
+
+        # 2. Open fresh tab/document
+        pyautogui.hotkey("ctrl", "n")
+        time.sleep(0.1)
+
+        # 3. Format payload and paste instantly
+        payload = f"{title.upper()}\n{'=' * len(title)}\n\n{content}\n"
+        paste_text(payload)
+
+        return f"Successfully created fresh Notepad note with title '{title}'."
+    except Exception as e:
+        return f"Failed to create note in Notepad: {e}"
+
+
+def read_active_window_text() -> str:
+    """Selects and reads all text currently open in the focused window."""
+    try:
         subprocess.run(["powershell", "-NoProfile", "-Command", "Clear-Clipboard"], check=True)
 
-        # Select all and copy
         pyautogui.hotkey("ctrl", "a")
         time.sleep(0.08)
         pyautogui.hotkey("ctrl", "c")
         time.sleep(0.08)
-
-        # Deselect to restore cursor position
         pyautogui.press("right")
 
-        # Read copied text from Windows clipboard
         result = subprocess.run(
             ["powershell", "-NoProfile", "-Command", "Get-Clipboard"],
             capture_output=True,
@@ -50,18 +67,13 @@ def read_active_window_text() -> str:
             encoding="utf-8",
         )
         content = result.stdout.strip()
-        if not content:
-            return "Active window is empty or does not contain selectable text."
-        return content
+        return content if content else "Active window contains no text."
     except Exception as e:
         return f"Failed to read active window text: {e}"
 
 
 def replace_active_window_text(new_text: str) -> str:
-    """
-    Replaces all text in the active document with new_text in 0.1 seconds.
-    Use this to edit reports, remove sections, or update open files in-place.
-    """
+    """Replaces all text in the active document with new_text in 0.1 seconds."""
     try:
         pyautogui.hotkey("ctrl", "a")
         time.sleep(0.05)
@@ -71,10 +83,7 @@ def replace_active_window_text(new_text: str) -> str:
 
 
 def delete_text(count: int = 1, unit: str = "word") -> str:
-    """
-    Deletes small chunks of text.
-    unit options: 'char', 'word', 'line'
-    """
+    """Deletes small chunks of text ('char', 'word', 'line')."""
     try:
         if unit == "line":
             pyautogui.hotkey("shift", "home")
@@ -93,7 +102,7 @@ def delete_text(count: int = 1, unit: str = "word") -> str:
 
 
 def click_screen(x: int, y: int, clicks: int = 1, button: str = "left") -> str:
-    """Moves the cursor to coordinate (x, y) and clicks."""
+    """Moves cursor to coordinate (x, y) and clicks."""
     try:
         pyautogui.click(x=x, y=y, clicks=clicks, button=button)
         return f"Clicked at ({x}, {y})."
