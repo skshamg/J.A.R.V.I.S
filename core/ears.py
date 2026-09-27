@@ -25,14 +25,18 @@ class EarEngine:
             normalized = re.sub(pattern, replacement, normalized, flags=re.IGNORECASE)
         return normalized
 
-    def listen_smart(self, max_duration: int = 15, silence_tolerance: float = 1.8) -> str:
+    def listen_smart(self, max_duration: int = 35, silence_tolerance: float = 3.0) -> str:
+        """
+        Dynamically captures audio allowing for complex, long thoughts.
+        Tolerates up to 3.0 seconds of mid-sentence thinking pauses.
+        """
         chunk_size = int(self.sample_rate * 0.2)
         recorded_frames = []
 
         speech_started = False
         silence_start_time = None
         start_time = time.time()
-        threshold = 380
+        threshold = 360  # Calibrated for ambient laptop microphones
 
         with sd.InputStream(samplerate=self.sample_rate, channels=1, dtype="int16") as stream:
             while (time.time() - start_time) < max_duration:
@@ -49,8 +53,10 @@ class EarEngine:
                     if silence_start_time is None:
                         silence_start_time = time.time()
                     elif (time.time() - silence_start_time) > silence_tolerance:
+                        # User has concluded speaking
                         break
-                elif (time.time() - start_time) > 4.5:
+                elif (time.time() - start_time) > 5.5:
+                    # No speech detected within the initial 5.5 seconds
                     return ""
 
         if not recorded_frames or not speech_started:
@@ -66,7 +72,6 @@ class EarEngine:
             with sr.AudioFile(self.temp_wav) as source:
                 audio = self.recognizer.record(source)
 
-            # Indian English dialect parser
             raw_text = self.recognizer.recognize_google(audio, language="en-IN")
 
             if os.path.exists(self.temp_wav):

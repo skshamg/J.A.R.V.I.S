@@ -1,5 +1,5 @@
 QWidget#MainFrame {
-    background-color: rgba(8, 14, 26, 0.90);
+    background-color: rgba(8, 14, 26, 0.92);
     border: 1px solid rgba(0, 240, 255, 0.35);
     border-top: 2px solid #00f0ff;
     border-radius: 14px;
@@ -35,19 +35,51 @@ QLabel#TelemetryLabel {
     color: #90a4ae;
     font-family: "Consolas", monospace;
     font-size: 10px;
-    background-color: rgba(0, 0, 0, 0.3);
+    background-color: rgba(0, 0, 0, 0.35);
     padding: 5px 8px;
     border-radius: 6px;
     border-left: 2px solid #00e5ff;
 }
 
-/* Glassmorphic Subtitle Box */
-QLabel#SubtitleBox {
+/* Auto-Scrolling Subtitle Container */
+QScrollArea#SubtitleScrollArea {
+    background: transparent;
+    border: 1px dashed rgba(0, 240, 255, 0.3);
+    border-radius: 8px;
+    background-color: rgba(4, 10, 20, 0.75);
+}
+
+QLabel#SubtitleContent {
     color: #e0f7fa;
-    background-color: rgba(4, 10, 20, 0.7);
-    border: 1px dashed rgba(0, 240, 255, 0.35);
-    border-radius: 6px;
-    padding: 8px 10px;
     font-family: "Segoe UI", sans-serif;
     font-size: 11px;
+    padding: 6px;
+}
+
+/* Sleek Cyberpunk Scrollbar */
+QScrollBar:vertical {
+    border: none;
+    background: rgba(0, 0, 0, 0.2);
+    width: 5px;
+    margin: 0px;
+    border-radius: 2px;
+}
+QScrollBar::handle:vertical {
+    background: #00e5ff;
+    min-height: 20px;
+    border-radius: 2px;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+/* Permanent Shortcut Cheat-Sheet Footer */
+QLabel#ShortcutFooter {
+    color: rgba(0, 240, 255, 0.7);
+    background-color: rgba(0, 240, 255, 0.05);
+    border-top: 1px solid rgba(0, 240, 255, 0.15);
+    font-family: "Consolas", monospace;
+    font-size: 9px;
+    padding: 3px 6px;
+    border-radius: 4px;
 }

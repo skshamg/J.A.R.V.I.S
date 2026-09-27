@@ -1,6 +1,11 @@
+import os
 import sys
 import time
 import keyboard
+
+# Suppress Qt DPI warning in terminal
+os.environ["QT_LOGGING_RULES"] = "qt.qpa.*=false"
+
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -13,8 +18,8 @@ from core.audio_fx import SoundFX
 
 
 class AutonomousCoreWorker(QThread):
-    update_hud = pyqtSignal(str, str)
-    update_subs = pyqtSignal(str, str)  # (Speaker, Text)
+    update_hud = pyqtSignal(str)          # State only
+    update_subs = pyqtSignal(str, str)    # (Speaker, Text)
 
     def __init__(self):
         super().__init__()
@@ -42,12 +47,12 @@ class AutonomousCoreWorker(QThread):
         SoundFX.chime_abort()
         if self.speaker:
             self.speaker.stop()
-        self.update_hud.emit("ONLINE", "Action aborted.")
-        self.update_subs.emit("SYSTEM", "Emergency stop triggered. Standing by.")
+        self.update_hud.emit("ONLINE")
+        self.update_subs.emit("SYSTEM", "Emergency interrupt triggered. Standing by.")
 
     def run(self):
-        self.update_hud.emit("INITIALIZING", "Loading Mark-II neural systems...")
-        self.update_subs.emit("SYSTEM", "Calibrating en-IN acoustic receptors...")
+        self.update_hud.emit("INITIALIZING")
+        self.update_subs.emit("SYSTEM", "Calibrating Mark-II neural links...")
 
         self.brain = Mark1Brain()
         self.speaker = SpeechEngine()
@@ -55,10 +60,10 @@ class AutonomousCoreWorker(QThread):
         self.wake_detector = WakeWordDetector()
 
         time.sleep(0.5)
-        self.update_hud.emit("ONLINE", "Ready")
+        self.update_hud.emit("ONLINE")
         self.update_subs.emit("MARK-II", "All systems nominal, sir. Vocal wake word active.")
         SoundFX.chime_wake()
-        self.speaker.speak("Mark Two online. Systems nominal, sir.")
+        self.speaker.speak("Mark Two systems nominal. Ready for your command.")
 
         while self.running:
             if not self.trigger_mode:
@@ -74,32 +79,32 @@ class AutonomousCoreWorker(QThread):
 
             # 1. Listening State
             if current_mode == "VISION":
-                self.update_hud.emit("VISION ACTIVE", "Capturing screen...")
+                self.update_hud.emit("VISION ACTIVE")
                 self.update_subs.emit("SYSTEM", "Optical sweep active. Speak command...")
             else:
-                self.update_hud.emit("LISTENING", "Listening...")
-                self.update_subs.emit("SYSTEM", "Listening to your voice...")
+                self.update_hud.emit("LISTENING")
+                self.update_subs.emit("SYSTEM", "Listening (take your time)...")
 
-            spoken_text = self.ears.listen_smart(max_duration=15, silence_tolerance=1.8)
+            spoken_text = self.ears.listen_smart(max_duration=35, silence_tolerance=3.0)
 
             if self.abort_requested:
                 continue
 
             if not spoken_text:
-                self.update_hud.emit("ONLINE", "No voice captured.")
-                self.update_subs.emit("SYSTEM", "No voice detected. Standing by.")
+                self.update_hud.emit("ONLINE")
+                self.update_subs.emit("SYSTEM", "No voice captured. Standing by.")
                 continue
 
-            # Subtitle what the user just said
+            # Subtitle user query
             self.update_subs.emit("YOU", spoken_text)
 
-            # 2. Thinking State
+            # 2. Thinking & Automation State
             SoundFX.chime_thinking()
-            self.update_hud.emit("THINKING", f'"{spoken_text}"')
+            self.update_hud.emit("THINKING")
 
             if spoken_text.lower() in ["exit", "quit", "shutdown", "abort"]:
                 SoundFX.chime_abort()
-                self.update_hud.emit("STANDBY", "Deactivating...")
+                self.update_hud.emit("STANDBY")
                 self.update_subs.emit("MARK-II", "Shutting down. Goodbye, sir.")
                 self.speaker.speak("Shutting down. Goodbye, sir.")
                 self.running = False
@@ -111,13 +116,13 @@ class AutonomousCoreWorker(QThread):
             if self.abort_requested:
                 continue
 
-            # 3. Speaking State + Subtitles
-            self.update_hud.emit("SPEAKING", f'"{spoken_text}"')
+            # 3. Speaking State (Subtitles persist permanently)
+            self.update_hud.emit("SPEAKING")
             self.update_subs.emit("MARK-II", reply)
             self.speaker.speak(reply)
 
             if not self.abort_requested:
-                self.update_hud.emit("ONLINE", "Ready")
+                self.update_hud.emit("ONLINE")
             time.sleep(0.2)
 
 
