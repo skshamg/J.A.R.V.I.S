@@ -1,95 +1,158 @@
 import asyncio
 import ctypes
 import os
+import queue
 import re
+import threading
 import time
-import edge_tts
+import pyttsx3
+
+try:
+    import edge_tts
+    EDGE_TTS_AVAILABLE = True
+except ImportError:
+    EDGE_TTS_AVAILABLE = False
+
+winmm = ctypes.windll.winmm
+kernel32 = ctypes.windll.kernel32
+
+
+def _get_short_path(path: str) -> str:
+    """Converts long paths to Windows 8.3 short paths for reliable MCI playback."""
+    buf = ctypes.create_unicode_buffer(300)
+    kernel32.GetShortPathNameW(path, buf, 300)
+    return buf.value if buf.value else path
 
 
 class SpeechEngine:
-    def __init__(self, voice: str = "en-GB-RyanNeural"):
-        self.voice = voice
-        self.temp_file = os.path.abspath("mark1_voice.mp3")
-        self.winmm = ctypes.windll.winmm
-        self.is_speaking = False
-        self._abort = False
+    def __init__(self, voice_name: str = "en-GB-RyanNeural"):
+        self.voice_name = voice_name
+        self.speech_queue = queue.Queue()
+        self.stop_event = threading.Event()
+        self.lock = threading.Lock()
+        self.temp_mp3 = os.path.abspath("jarvis_speech_temp.mp3")
 
-    def sanitize_for_speech(self, text: str) -> str:
-        """Strips raw code blocks, markdown junk, and translates snake_case."""
-        # 1. Remove markdown code blocks completely
-        cleaned = re.sub(r"```[\s\S]*?```", " [code snippet omitted] ", text)
+        # Fallback pyttsx3 offline engine
+        self.pyttsx3_engine = pyttsx3.init()
+        self.pyttsx3_engine.setProperty("rate", 185)
+        self.pyttsx3_engine.setProperty("volume", 1.0)
+        self._configure_pyttsx3_voice()
 
-        # 2. Remove inline backticks
-        cleaned = re.sub(r"`([^`]+)`", r"\1", cleaned)
+        # Dedicated async worker thread
+        self.worker = threading.Thread(target=self._speech_worker, daemon=True)
+        self.worker.start()
 
-        # 3. Replace snake_case underscores with spaces (e.g., sys_tools -> sys tools)
-        cleaned = cleaned.replace("_", " ")
-
-        # 4. Remove formatting symbols
-        cleaned = re.sub(r"[*#>`~|/\\{}]", " ", cleaned)
-
-        # 5. Clean up multiple spaces
-        cleaned = re.sub(r"\s+", " ", cleaned).strip()
-        return cleaned
-
-    def stop(self):
-        """Immediately interrupts and terminates active speech playback."""
-        self._abort = True
+    def _configure_pyttsx3_voice(self):
         try:
-            self.winmm.mciSendStringW("stop mark1_audio", None, 0, None)
-            self.winmm.mciSendStringW("close mark1_audio", None, 0, None)
+            voices = self.pyttsx3_engine.getProperty("voices")
+            for v in voices:
+                if any(x in v.name.lower() for x in ["david", "george", "mark", "ryan"]):
+                    self.pyttsx3_engine.setProperty("voice", v.id)
+                    break
         except Exception:
             pass
-        self.is_speaking = False
 
-    def speak(self, text: str):
-        clean_text = self.sanitize_for_speech(text)
-        if not clean_text:
-            return
+    def _clean_for_speech(self, text: str) -> str:
+        # Prevent acronym spelling: 'J.A.R.V.I.S.' -> 'Jarvis'
+        cleaned = re.sub(r"\bJ\.?A\.?R\.?V\.?I\.?S\.?\b", "Jarvis", text, flags=re.IGNORECASE)
+        cleaned = re.sub(r"```.*?```", "", cleaned, flags=re.DOTALL)
+        cleaned = re.sub(r"https?://\S+|www\.\S+", "web link", cleaned)
+        cleaned = re.sub(r"[\*\_#`>\[\]]", "", cleaned)
+        return cleaned.strip()
 
-        self.stop()  # Stop any prior speech before beginning
-        self._abort = False
-        self.is_speaking = True
+    def _play_native_mci(self, mp3_path: str):
+        """Plays MP3 audio natively via Windows MCI (no pygame required)."""
+        short_path = _get_short_path(mp3_path)
+        winmm.mciSendStringW("close jarvis_voice", None, 0, None)
 
+        open_cmd = f'open "{short_path}" type mpegvideo alias jarvis_voice'
+        if winmm.mciSendStringW(open_cmd, None, 0, None) != 0:
+            return False
+
+        winmm.mciSendStringW("play jarvis_voice", None, 0, None)
+
+        status_buf = ctypes.create_unicode_buffer(64)
+        while True:
+            if self.stop_event.is_set():
+                winmm.mciSendStringW("stop jarvis_voice", None, 0, None)
+                winmm.mciSendStringW("close jarvis_voice", None, 0, None)
+                break
+
+            winmm.mciSendStringW("status jarvis_voice mode", status_buf, 64, None)
+            mode = status_buf.value.strip().lower()
+            if mode in ("stopped", ""):
+                winmm.mciSendStringW("close jarvis_voice", None, 0, None)
+                break
+
+            time.sleep(0.04)
+
+        return True
+
+    def _play_edge_tts(self, clean_text: str):
         try:
-            # Generate neural audio buffer
-            asyncio.run(self._generate_speech(clean_text))
+            communicate = edge_tts.Communicate(clean_text, self.voice_name)
+            asyncio.run(communicate.save(self.temp_mp3))
 
-            if self._abort:
+            if self.stop_event.is_set():
                 return
 
-            self._play_non_blocking()
+            if not self._play_native_mci(self.temp_mp3):
+                self._play_pyttsx3(clean_text)
+
         except Exception:
-            self.is_speaking = False
+            self._play_pyttsx3(clean_text)
+        finally:
+            if os.path.exists(self.temp_mp3):
+                try:
+                    os.remove(self.temp_mp3)
+                except Exception:
+                    pass
 
-    async def _generate_speech(self, text: str):
-        communicator = edge_tts.Communicate(text, self.voice)
-        await communicator.save(self.temp_file)
+    def _play_pyttsx3(self, clean_text: str):
+        try:
+            with self.lock:
+                self.pyttsx3_engine.say(clean_text)
+                self.pyttsx3_engine.runAndWait()
+        except Exception as e:
+            print(f"[PYTTSX3 ERROR] {e}")
 
-    def _play_non_blocking(self):
-        """Plays audio asynchronously so it can be interrupted at any millisecond."""
-        short_buf = ctypes.create_unicode_buffer(260)
-        ctypes.windll.kernel32.GetShortPathNameW(self.temp_file, short_buf, 260)
-        short_path = short_buf.value or self.temp_file
-
-        self.winmm.mciSendStringW("close mark1_audio", None, 0, None)
-        self.winmm.mciSendStringW(f'open "{short_path}" type mpegvideo alias mark1_audio', None, 0, None)
-        self.winmm.mciSendStringW("play mark1_audio", None, 0, None)  # No "wait" keyword
-
-        # Poll playback status every 50ms to allow instant cancellation
-        status_buf = ctypes.create_unicode_buffer(128)
-        while not self._abort:
-            self.winmm.mciSendStringW("status mark1_audio mode", status_buf, 128, None)
-            if status_buf.value != "playing":
+    def _speech_worker(self):
+        while True:
+            text = self.speech_queue.get()
+            if text is None:
                 break
-            time.sleep(0.05)
 
-        self.winmm.mciSendStringW("stop mark1_audio", None, 0, None)
-        self.winmm.mciSendStringW("close mark1_audio", None, 0, None)
-        self.is_speaking = False
+            self.stop_event.clear()
+            clean_text = self._clean_for_speech(text)
 
-        if os.path.exists(self.temp_file):
+            if clean_text:
+                if EDGE_TTS_AVAILABLE:
+                    self._play_edge_tts(clean_text)
+                else:
+                    self._play_pyttsx3(clean_text)
+
+            self.speech_queue.task_done()
+
+    def speak(self, text: str):
+        if not text:
+            return
+        self.speech_queue.put(text)
+
+    def stop(self):
+        """Immediately silences speech playback."""
+        self.stop_event.set()
+        winmm.mciSendStringW("stop jarvis_voice", None, 0, None)
+        winmm.mciSendStringW("close jarvis_voice", None, 0, None)
+
+        try:
+            with self.lock:
+                self.pyttsx3_engine.stop()
+        except Exception:
+            pass
+
+        while not self.speech_queue.empty():
             try:
-                os.remove(self.temp_file)
+                self.speech_queue.get_nowait()
+                self.speech_queue.task_done()
             except Exception:
-                pass
+                break

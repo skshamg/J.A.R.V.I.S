@@ -17,21 +17,23 @@ class EarEngine:
             (r"\bmark\s+(to|too|two)\b", "Mark-2"),
             (r"\bmark\s+(one|won)\b", "Mark-1"),
             (r"\b(service|javis|jervis|charvis)\b", "Jarvis"),
+            # Phonetic fix: Maps misheard exit cues directly to "abort"
+            (r"^\s*(about|a boat|aboard|board|a board)\s*$", "abort"),
+            (r"\b(shut down|turn off)\b", "shutdown"),
         ]
 
     def _normalize_text(self, raw_text: str) -> str:
-        normalized = raw_text
+        normalized = raw_text.strip()
         for pattern, replacement in self.phonetic_replacements:
             normalized = re.sub(pattern, replacement, normalized, flags=re.IGNORECASE)
         return normalized
 
     def _filter_and_get_energy(self, pcm_chunk: np.ndarray) -> float:
-        """High-pass filter to strip low-frequency fan rumble (>150Hz)."""
         floats = pcm_chunk.astype(float)
         filtered = np.diff(floats, prepend=floats[0])
         return float(np.sqrt(np.mean(filtered**2)))
 
-    def listen_smart(self, max_duration: int = 20, silence_tolerance: float = 1.5) -> str:
+    def listen_smart(self, max_duration: int = 25, silence_tolerance: float = 2.2) -> str:
         chunk_size = int(self.sample_rate * 0.1)
         recorded_frames = []
 
@@ -47,8 +49,8 @@ class EarEngine:
                 init_energies.append(self._filter_and_get_energy(arr))
                 recorded_frames.append(data)
 
-            baseline_noise = max(40.0, float(np.mean(init_energies)))
-            speech_trigger = baseline_noise * 1.8 + 25.0
+            baseline_noise = max(35.0, float(np.mean(init_energies)))
+            speech_trigger = baseline_noise * 1.6 + 20.0
 
             while (time.time() - start_time) < max_duration:
                 data, _ = stream.read(chunk_size)
@@ -65,7 +67,7 @@ class EarEngine:
                         silence_start_time = time.time()
                     elif (time.time() - silence_start_time) >= silence_tolerance:
                         break
-                elif (time.time() - start_time) > 4.5:
+                elif (time.time() - start_time) > 5.0:
                     return ""
 
         if not recorded_frames or not speech_started:
@@ -86,7 +88,7 @@ class EarEngine:
             if os.path.exists(self.temp_wav):
                 os.remove(self.temp_wav)
 
-            return self._normalize_text(raw_text.strip())
+            return self._normalize_text(raw_text)
         except Exception:
             if os.path.exists(self.temp_wav):
                 os.remove(self.temp_wav)

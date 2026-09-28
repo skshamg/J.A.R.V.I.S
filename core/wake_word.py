@@ -1,7 +1,8 @@
 import collections
-import os
+import queue
+import re
+import threading
 import time
-import wave
 import numpy as np
 import sounddevice as sd
 import speech_recognition as sr
@@ -10,95 +11,144 @@ import speech_recognition as sr
 class WakeWordDetector:
     def __init__(self, sample_rate: int = 16000):
         self.sample_rate = sample_rate
+        self.chunk_size = int(self.sample_rate * 0.08)  # 80ms chunks
         self.recognizer = sr.Recognizer()
-        self.temp_wav = os.path.abspath("wake_buffer.wav")
+        
+        self.running = True
+        self.paused = False
+        self.wake_detected = False
+        self.lock = threading.Lock()
 
-        self.keywords = [
-            "jarvis", "javis", "jervis", "jarves", "service", 
-            "charvis", "mark", "hey mark", "mark 3", "wake up"
+        # Asynchronous processing queue so HTTP calls never freeze the mic
+        self.verify_queue = queue.Queue(maxsize=3)
+
+        # 1. Start background recognition worker
+        self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
+        self.worker_thread.start()
+
+        # 2. Start non-blocking audio capture stream
+        self.capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
+        self.capture_thread.start()
+
+        print("[WAKE ENGINE] Asynchronous VAD Phoneme Engine online.")
+
+    def pause(self):
+        """Yields mic control exclusively to Ears during active conversation."""
+        with self.lock:
+            self.paused = True
+
+    def resume(self):
+        """Re-arms background listening when returning to standby."""
+        with self.lock:
+            self.paused = False
+            self.wake_detected = False
+
+    def _filter_energy(self, pcm_chunk: np.ndarray) -> float:
+        """High-pass filter: kills low-frequency fan drone, humming, and desk rumble."""
+        floats = pcm_chunk.astype(float)
+        filtered = np.diff(floats, prepend=floats[0])
+        return float(np.sqrt(np.mean(filtered**2)))
+
+    def _worker_loop(self):
+        """Background thread: verifies wake word without blocking mic ingestion."""
+        # Common phonetic transcriptions of "Jarvis" across accents
+        targets = [
+            r"\bjarvis\b",
+            r"\bjavis\b",
+            r"\bjervis\b",
+            r"\bservice\b",
+            r"\bcharvis\b",
+            r"\btravis\b",
+            r"\bhey\s+jarvis\b",
+            r"\bhi\s+jarvis\b",
         ]
 
-        # 2.2-second circular rolling buffer (keeps audio alive with zero blind spots)
-        self.buffer_len = int(sample_rate * 2.2)
-        self.audio_ring = collections.deque(maxlen=self.buffer_len)
+        while self.running:
+            try:
+                audio_bytes = self.verify_queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
 
-        # Baseline noise calibration
-        self.ambient_energy = 50
-        self.is_listening = False
-        self.stream = None
-        self._init_stream()
+            try:
+                audio_data = sr.AudioData(audio_bytes, self.sample_rate, 2)
+                text = self.recognizer.recognize_google(audio_data, language="en-IN")
+                clean = text.lower().strip()
 
-    def _audio_callback(self, indata, frames, time_info, status):
-        """Continuously feeds the circular buffer in real time."""
-        self.audio_ring.extend(indata.flatten())
+                for pat in targets:
+                    if re.search(pat, clean):
+                        print(f"[WAKE HIT] Verified wake phrase: '{clean}'")
+                        with self.lock:
+                            self.wake_detected = True
+                        break
+            except Exception:
+                # Discard non-speech, hums, or noise bursts cleanly
+                pass
+            finally:
+                self.verify_queue.task_done()
 
-    def _init_stream(self):
+    def _capture_loop(self):
+        """Continuous mic ingestion loop with dynamic VAD and pre-roll padding."""
+        ring_buffer = collections.deque(maxlen=6)  # 480ms pre-roll to catch the start of speech
+        current_utterance = []
+        is_speaking = False
+        silence_chunks = 0
+        baseline_energy = 40.0
+
         try:
-            self.stream = sd.InputStream(
-                samplerate=self.sample_rate,
-                channels=1,
-                dtype="int16",
-                callback=self._audio_callback,
-                blocksize=int(self.sample_rate * 0.1),
-            )
-            self.stream.start()
+            with sd.InputStream(samplerate=self.sample_rate, channels=1, dtype="int16") as stream:
+                while self.running:
+                    if self.paused:
+                        time.sleep(0.08)
+                        ring_buffer.clear()
+                        current_utterance.clear()
+                        is_speaking = False
+                        continue
 
-            # Calibrate room noise over 0.4 seconds
-            time.sleep(0.4)
-            if len(self.audio_ring) > 0:
-                recent = np.array(self.audio_ring, dtype=float)
-                self.ambient_energy = max(35, int(np.sqrt(np.mean(recent**2))))
+                    data, _ = stream.read(self.chunk_size)
+                    arr = np.frombuffer(data, dtype=np.int16)
+                    energy = self._filter_energy(arr)
+
+                    # Dynamic ambient noise floor tracking
+                    baseline_energy = baseline_energy * 0.95 + energy * 0.05
+                    trigger_threshold = max(110.0, baseline_energy * 2.0)
+
+                    if not is_speaking:
+                        ring_buffer.append(data)
+                        if energy > trigger_threshold:
+                            # Speech detected: stitch the pre-roll so the first syllable isn't cut off
+                            is_speaking = True
+                            current_utterance = list(ring_buffer)
+                            silence_chunks = 0
+                    else:
+                        current_utterance.append(data)
+
+                        if energy < trigger_threshold:
+                            silence_chunks += 1
+                        else:
+                            silence_chunks = 0
+
+                        # Natural sentence pause: 400ms (5 chunks) of silence OR 1.8s max word length
+                        if silence_chunks >= 5 or len(current_utterance) >= 23:
+                            # Only process clips that are at least 0.5s long (prevents keyclick triggers)
+                            if len(current_utterance) >= 7:
+                                full_clip = b"".join(current_utterance)
+                                if not self.verify_queue.full():
+                                    self.verify_queue.put_nowait(full_clip)
+
+                            current_utterance.clear()
+                            is_speaking = False
+                            silence_chunks = 0
+
         except Exception as e:
-            print(f"[WAKE ERROR] Stream init failed: {e}")
+            print(f"[WAKE CAPTURE ERROR] {e}")
 
     def poll_for_wake_phrase(self) -> bool:
-        """
-        Inspects the continuous audio buffer without shutting off the mic.
-        """
-        if len(self.audio_ring) < self.buffer_len:
-            return False
-
-        # Grab a snapshot of the last 2.2 seconds of audio
-        audio_snapshot = np.array(self.audio_ring, dtype=np.int16)
-        current_rms = np.sqrt(np.mean(audio_snapshot[-int(self.sample_rate * 0.8):].astype(float) ** 2))
-
-        # Dynamic trigger: voice must rise above room ambient noise
-        trigger_threshold = max(110, self.ambient_energy * 1.7)
-        if current_rms < trigger_threshold:
-            return False
-
-        # Write snapshot buffer for transcription
-        with wave.open(self.temp_wav, "wb") as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(self.sample_rate)
-            wf.writeframes(audio_snapshot.tobytes())
-
-        try:
-            with sr.AudioFile(self.temp_wav) as source:
-                audio = self.recognizer.record(source)
-
-            # Query Indian-English model
-            text = self.recognizer.recognize_google(audio, language="en-IN").lower()
-
-            if os.path.exists(self.temp_wav):
-                os.remove(self.temp_wav)
-
-            if any(kw in text for kw in self.keywords):
-                # Clear buffer so it doesn't double-trigger
-                self.audio_ring.clear()
+        """Instant non-blocking poll checked by the daemon main loop."""
+        with self.lock:
+            if self.wake_detected:
+                self.wake_detected = False
                 return True
-
-            return False
-        except Exception:
-            if os.path.exists(self.temp_wav):
-                os.remove(self.temp_wav)
-            return False
+        return False
 
     def close(self):
-        if self.stream:
-            try:
-                self.stream.stop()
-                self.stream.close()
-            except Exception:
-                pass
+        self.running = False

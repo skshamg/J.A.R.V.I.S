@@ -1,10 +1,18 @@
 import os
 import sys
-import time
-import keyboard
+
+# Silent Console Safeguard: Prevents pythonw.exe crash when stdout is None
+if sys.stdout is None or sys.stderr is None:
+    log_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "logs"))
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = open(os.path.join(log_dir, "jarvis_runtime.log"), "a", encoding="utf-8")
+    sys.stdout = log_file
+    sys.stderr = log_file
 
 os.environ["QT_LOGGING_RULES"] = "qt.qpa.*=false"
 
+import time
+import keyboard
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QThread, QObject, pyqtSignal
 
@@ -17,6 +25,7 @@ from core.wake_word import WakeWordDetector
 from core.ambient_monitor import AmbientMonitor
 from core.audio_fx import SoundFX
 from core.timer_daemon import TimerDaemon, register_global_timer_daemon
+from core.reflex_engine import try_instant_reflex
 
 
 class HotkeySignalBridge(QObject):
@@ -64,11 +73,12 @@ class Mark3CoreDaemon(QThread):
         SoundFX.chime_abort()
         if self.speaker:
             self.speaker.stop()
+        if self.wake_detector:
+            self.wake_detector.resume()
         self.update_hud.emit("ONLINE")
         self.update_subs.emit("J.A.R.V.I.S.", "Standing by, sir.")
 
     def on_timer_alert(self, reminder_note: str):
-        """Dispatched when a background timer expires."""
         self.summon_hud.emit()
         self.update_hud.emit("ALERT")
         msg = f"Timer complete: {reminder_note}"
@@ -88,7 +98,6 @@ class Mark3CoreDaemon(QThread):
         self.ambient_sensor = AmbientMonitor()
         self.agent_loop = AutonomousAgentLoop()
 
-        # Initialize background timer daemon
         self.timer_daemon = TimerDaemon(alert_callback=self.on_timer_alert)
         register_global_timer_daemon(self.timer_daemon)
 
@@ -99,6 +108,7 @@ class Mark3CoreDaemon(QThread):
         self.speaker.speak("Systems nominal, sir. Standing by.")
 
         while self.running:
+            # 1. Background Standby Loop
             if not self.trigger_mode:
                 if (time.time() - self.last_ambient_tick) > 6.0:
                     self.last_ambient_tick = time.time()
@@ -121,23 +131,28 @@ class Mark3CoreDaemon(QThread):
             current_mode = self.trigger_mode
             self.trigger_mode = None
 
+            # 2. Pause wake detector to grant Ears 100% exclusive mic control
+            self.wake_detector.pause()
+
             if current_mode == "VISION":
                 self.update_hud.emit("VISION ACTIVE")
             else:
                 self.update_hud.emit("LISTENING")
 
-            spoken_goal = self.ears.listen_smart(max_duration=20, silence_tolerance=1.5)
+            spoken_goal = self.ears.listen_smart(max_duration=25, silence_tolerance=2.2)
 
             if self.abort_requested:
+                self.wake_detector.resume()
                 continue
 
             if not spoken_goal:
                 self.update_hud.emit("ONLINE")
+                self.wake_detector.resume()
                 continue
 
             self.update_subs.emit("YOU", spoken_goal)
 
-            # Voice command to reboot daemon via run.bat (Exit Code 42)
+            # System control shortcuts
             if any(kw in spoken_goal.lower() for kw in ["reboot", "restart core", "restart system"]):
                 SoundFX.chime_abort()
                 self.update_hud.emit("STANDBY")
@@ -157,12 +172,25 @@ class Mark3CoreDaemon(QThread):
                 QApplication.instance().quit()
                 break
 
+            # 3. Check Instant Local Reflex (0.05s response time)
+            reflex_response = try_instant_reflex(spoken_goal)
+            if reflex_response:
+                self.update_hud.emit("SPEAKING")
+                self.update_subs.emit("J.A.R.V.I.S.", reflex_response)
+                self.speaker.speak(reflex_response)
+                if not self.abort_requested:
+                    self.update_hud.emit("ONLINE")
+                self.wake_detector.resume()
+                continue
+
+            # 4. Neural Autonomous Cloud Execution (Complex tasks only)
             SoundFX.chime_thinking()
             self.update_hud.emit("PROCESSING")
 
             final_summary = self.agent_loop.execute_mission(spoken_goal, max_steps=6)
 
             if self.abort_requested:
+                self.wake_detector.resume()
                 continue
 
             self.update_hud.emit("SPEAKING")
@@ -171,6 +199,9 @@ class Mark3CoreDaemon(QThread):
 
             if not self.abort_requested:
                 self.update_hud.emit("ONLINE")
+
+            # Re-arm the background wake listener
+            self.wake_detector.resume()
             time.sleep(0.2)
 
 

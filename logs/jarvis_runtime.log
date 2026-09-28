@@ -1,0 +1,7 @@
+[WAKE ENGINE] In-memory neural phoneme monitor initialized.
+[MISSION START] crazy
+[NEURAL ROUTE] Connecting via gemini-3.8-flash...
+[INTERNAL FAILOVER] gemini-3.8-flash encountered: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}
+[NEURAL ROUTE] Connecting via gemini-3.5-flash-lite...
+[COMPLETE] Objectives cleared.
+[WAKE HIT] Match: 'hey jarvis'
