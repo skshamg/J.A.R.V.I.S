@@ -25,47 +25,47 @@ class EarEngine:
             normalized = re.sub(pattern, replacement, normalized, flags=re.IGNORECASE)
         return normalized
 
-    def listen_smart(self, max_duration: int = 35, silence_tolerance: float = 2.5) -> str:
-        """
-        Dynamically adapts to ambient background levels and records continuous speech.
-        """
-        chunk_size = int(self.sample_rate * 0.15)
+    def _filter_and_get_energy(self, pcm_chunk: np.ndarray) -> float:
+        """High-pass filter to strip low-frequency fan rumble (>150Hz)."""
+        floats = pcm_chunk.astype(float)
+        filtered = np.diff(floats, prepend=floats[0])
+        return float(np.sqrt(np.mean(filtered**2)))
+
+    def listen_smart(self, max_duration: int = 20, silence_tolerance: float = 1.5) -> str:
+        chunk_size = int(self.sample_rate * 0.1)
         recorded_frames = []
 
         speech_started = False
         silence_start_time = None
         start_time = time.time()
 
-        # Dynamic room calibration on each listen call
-        ambient_samples = []
         with sd.InputStream(samplerate=self.sample_rate, channels=1, dtype="int16") as stream:
-            # Measure room acoustics for the first 250ms
-            for _ in range(2):
+            init_energies = []
+            for _ in range(3):
                 data, _ = stream.read(chunk_size)
                 arr = np.frombuffer(data, dtype=np.int16)
-                ambient_samples.append(np.sqrt(np.mean(arr.astype(float) ** 2)))
+                init_energies.append(self._filter_and_get_energy(arr))
                 recorded_frames.append(data)
 
-            noise_floor = np.mean(ambient_samples)
-            speech_threshold = max(90, noise_floor * 1.5 + 40)
+            baseline_noise = max(40.0, float(np.mean(init_energies)))
+            speech_trigger = baseline_noise * 1.8 + 25.0
 
             while (time.time() - start_time) < max_duration:
                 data, _ = stream.read(chunk_size)
-                audio_array = np.frombuffer(data, dtype=np.int16)
-                volume = np.sqrt(np.mean(audio_array.astype(float) ** 2))
+                arr = np.frombuffer(data, dtype=np.int16)
+                energy = self._filter_and_get_energy(arr)
 
                 recorded_frames.append(data)
 
-                if volume > speech_threshold:
+                if energy > speech_trigger:
                     speech_started = True
                     silence_start_time = None
                 elif speech_started:
                     if silence_start_time is None:
                         silence_start_time = time.time()
-                    elif (time.time() - silence_start_time) > silence_tolerance:
+                    elif (time.time() - silence_start_time) >= silence_tolerance:
                         break
-                elif (time.time() - start_time) > 5.0:
-                    # No speech detected within initial 5 seconds
+                elif (time.time() - start_time) > 4.5:
                     return ""
 
         if not recorded_frames or not speech_started:

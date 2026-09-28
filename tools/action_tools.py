@@ -8,6 +8,32 @@ pyautogui.FAILSAFE = True
 pyautogui.PAUSE = 0.05
 
 
+def create_notepad_note(title: str, content: str) -> str:
+    """
+    Creates a formatted text file on your Windows Desktop (outside the project repo)
+    and opens it cleanly in Notepad without cluttering VS Code.
+    """
+    try:
+        # Route to C:\Users\<You>\Desktop\Jarvis_Notes
+        notes_dir = os.path.join(os.path.expanduser("~"), "Desktop", "Jarvis_Notes")
+        os.makedirs(notes_dir, exist_ok=True)
+
+        clean_title = "".join(c for c in title if c.isalnum() or c in (" ", "_", "-")).strip()
+        if not clean_title:
+            clean_title = "status_note"
+        file_path = os.path.join(notes_dir, f"{clean_title}.txt")
+
+        payload = f"{title.upper()}\n{'=' * len(title)}\n\n{content}\n"
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(payload)
+
+        # Open Notepad natively with the file pre-loaded
+        subprocess.Popen(["notepad.exe", file_path])
+        return f"Successfully created note '{clean_title}.txt' on Desktop and opened in Notepad."
+    except Exception as e:
+        return f"Failed to create note in Notepad: {e}"
+
+
 def paste_text(text: str, press_enter: bool = False) -> str:
     """Instantly injects text into the focused window using the Windows clipboard."""
     try:
@@ -23,30 +49,6 @@ def paste_text(text: str, press_enter: bool = False) -> str:
         return f"Successfully pasted {len(text)} characters into active window."
     except Exception as e:
         return f"Failed to paste text: {e}"
-
-
-def create_notepad_note(title: str, content: str) -> str:
-    """
-    Launches Notepad, waits for window focus, opens a clean document tab,
-    and pastes the formatted content in one seamless autonomous action.
-    Use this whenever instructed to write notes, logs, or reports in Notepad.
-    """
-    try:
-        # 1. Launch fresh Notepad window
-        subprocess.Popen(["notepad.exe"])
-        time.sleep(0.4)  # Wait for OS window initialization
-
-        # 2. Open fresh tab/document
-        pyautogui.hotkey("ctrl", "n")
-        time.sleep(0.1)
-
-        # 3. Format payload and paste instantly
-        payload = f"{title.upper()}\n{'=' * len(title)}\n\n{content}\n"
-        paste_text(payload)
-
-        return f"Successfully created fresh Notepad note with title '{title}'."
-    except Exception as e:
-        return f"Failed to create note in Notepad: {e}"
 
 
 def read_active_window_text() -> str:

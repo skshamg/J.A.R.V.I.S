@@ -20,6 +20,12 @@ from tools.action_tools import (
     open_web_url,
 )
 from tools.shell_tools import run_powershell_command
+from tools.web_tools import web_search, read_web_page
+from tools.vision_tools import click_element_on_screen
+from tools.startup_tools import set_windows_autostart
+from tools.media_tools import control_media_playback, adjust_system_volume, set_display_brightness
+from tools.window_tools import manage_active_window
+from core.timer_daemon import schedule_alarm_timer
 from core.memory import remember, recall, get_all_memories
 
 load_dotenv()
@@ -28,14 +34,12 @@ api_key = os.getenv("GEMINI_API_KEY")
 
 class AutonomousAgentLoop:
     def __init__(self, step_callback: Optional[Callable[[str, str], None]] = None):
-        # Strict 10-second client timeout to kill 503 hanging freezes instantly
         self.client = genai.Client(
             api_key=api_key,
-            http_options=types.HttpOptions(timeout=10000)
+            http_options=types.HttpOptions(timeout=25000)
         )
 
-        # Fastest sub-second models first
-        self.model_pool = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.5-flash"]
+        self.model_pool = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash"]
         self.current_model_idx = 0
         self.active_model = self.model_pool[self.current_model_idx]
         self.step_callback = step_callback
@@ -43,6 +47,15 @@ class AutonomousAgentLoop:
         self.tools = [
             get_system_telemetry,
             create_notepad_note,
+            web_search,
+            read_web_page,
+            click_element_on_screen,
+            control_media_playback,
+            adjust_system_volume,
+            set_display_brightness,
+            manage_active_window,
+            schedule_alarm_timer,
+            set_windows_autostart,
             launch_application,
             list_files_in_directory,
             run_powershell_command,
@@ -61,67 +74,65 @@ class AutonomousAgentLoop:
             recall,
         ]
 
-    def _notify(self, tag: str, message: str):
-        if self.step_callback:
-            self.step_callback(tag, message)
+    def _log_terminal(self, tag: str, message: str):
         print(f"[{tag}] {message}")
 
     def _build_system_instructions(self) -> str:
         return f"""
-You are MARK-3 J.A.R.V.I.S., a high-speed autonomous desktop agent.
+You are J.A.R.V.I.S., an autonomous high-speed desktop agent.
 
-CRITICAL WORKFLOW RULES:
-1. COMPOUND TASK CHAINING:
-   - When asked to write a note, status log, or report in Notepad:
-     * ALWAYS use `create_notepad_note(title, content)`. This macro automatically launches Notepad, handles window focus, and pastes the text in one shot.
-     * NEVER just launch Notepad and stop. You must complete the writing action.
-2. VERBAL RESPONSE:
-   - Output a crisp 1-sentence confirmation once all actions are completed.
+TOOL WORKFLOW GUIDELINES:
+1. MEDIA & HARDWARE:
+   - For playback control (play, pause, next track): call `control_media_playback(action)`.
+   - For audio volume: call `adjust_system_volume(level_action)`.
+   - For screen brightness: call `set_display_brightness(level_percent)`.
+2. WINDOW MANAGEMENT:
+   - For workspace window snapping or clearing: call `manage_active_window(action)`.
+3. TIMERS & REMINDERS:
+   - When asked to set a timer or alarm: convert duration to total seconds and call `schedule_alarm_timer(duration_seconds, reminder_text)`.
+4. AUTO-START:
+   - To make J.A.R.V.I.S. run on boot: call `set_windows_autostart(True)`.
+5. VISUAL GROUNDING & WEB:
+   - To click buttons on screen: call `click_element_on_screen(element_description)`.
+   - To search data: call `web_search(query)`.
+   - To write notes: ALWAYS call `create_notepad_note(title, content)`.
+6. BREVITY:
+   - Always confirm completed physical actions with a crisp 1-sentence reply.
 
-KNOWN MEMORIES:
+KNOWN USER PREFERENCES:
 {get_all_memories()}
 """
 
     def execute_mission(self, user_goal: str, max_steps: int = 6) -> str:
-        self._notify("PLANNER", f"Analyzing mission: '{user_goal}'")
+        self._log_terminal("MISSION START", user_goal)
 
         attempts = 0
         while attempts < len(self.model_pool):
             try:
-                self._notify("AGENT", f"Connecting via {self.active_model}...")
+                self._log_terminal("NEURAL ROUTE", f"Connecting via {self.active_model}...")
 
                 chat = self.client.chats.create(
                     model=self.active_model,
                     config=types.GenerateContentConfig(
                         system_instruction=self._build_system_instructions(),
                         tools=self.tools,
-                        temperature=0.1,
+                        temperature=0.2,
                     ),
                 )
 
                 response = chat.send_message(user_goal)
 
                 if response.text:
-                    self._notify("COMPLETE", "Mission objectives achieved.")
+                    self._log_terminal("COMPLETE", "Objectives cleared.")
                     return response.text.strip()
 
-                return "Mission executed successfully, sir."
+                return "Task completed successfully, sir."
 
             except Exception as e:
-                err_str = str(e)
+                self._log_terminal("INTERNAL FAILOVER", f"{self.active_model} encountered: {e}")
                 attempts += 1
                 self.current_model_idx = (self.current_model_idx + 1) % len(self.model_pool)
                 self.active_model = self.model_pool[self.current_model_idx]
-                self._notify("SYSTEM", f"Endpoint latency detected. Instantly failing over to {self.active_model}...")
-                time.sleep(0.5)
+                time.sleep(0.4)
 
-        return "Mission aborted: All network models exceeded response timeout limits."
-
-
-if __name__ == "__main__":
-    print("Testing Ultra-Fast Agent Loop...")
-    planner = AutonomousAgentLoop()
-    res = planner.execute_mission(
-        "Check telemetry, and if CPU load is normal, create a Notepad note with a brief status report."
-    )
-    print(f"\nFinal Verdict: {res}")
+        return "I encountered network resistance reaching the servers, sir. Standing by."

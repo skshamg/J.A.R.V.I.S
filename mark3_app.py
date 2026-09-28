@@ -16,13 +16,10 @@ from core.ears import EarEngine
 from core.wake_word import WakeWordDetector
 from core.ambient_monitor import AmbientMonitor
 from core.audio_fx import SoundFX
+from core.timer_daemon import TimerDaemon, register_global_timer_daemon
 
 
 class HotkeySignalBridge(QObject):
-    """
-    Thread-safe bridge between the low-level Windows 'keyboard' hook
-    and PyQt6's main GUI event loop. Prevents all OS thread deadlocks.
-    """
     trigger_voice_sig = pyqtSignal()
     trigger_vision_sig = pyqtSignal()
     toggle_hud_sig = pyqtSignal()
@@ -42,10 +39,12 @@ class Mark3CoreDaemon(QThread):
         self.wake_detector = None
         self.ambient_sensor = None
         self.agent_loop = None
+        self.timer_daemon = None
 
         self.trigger_mode = None
         self.abort_requested = False
         self.last_ambient_tick = time.time()
+        self.reboot_requested = False
 
     def trigger_voice(self):
         if not self.trigger_mode:
@@ -66,29 +65,40 @@ class Mark3CoreDaemon(QThread):
         if self.speaker:
             self.speaker.stop()
         self.update_hud.emit("ONLINE")
-        self.update_subs.emit("SYSTEM", "Mission interrupted by operator.")
+        self.update_subs.emit("J.A.R.V.I.S.", "Standing by, sir.")
+
+    def on_timer_alert(self, reminder_note: str):
+        """Dispatched when a background timer expires."""
+        self.summon_hud.emit()
+        self.update_hud.emit("ALERT")
+        msg = f"Timer complete: {reminder_note}"
+        self.update_subs.emit("ALERT", msg)
+        SoundFX.chime_wake()
+        if self.speaker:
+            self.speaker.speak(f"Sir, your timer for {reminder_note} has expired.")
+        self.update_hud.emit("ONLINE")
 
     def run(self):
         self.update_hud.emit("INITIALIZING")
-        self.update_subs.emit("SYSTEM", "Calibrating Mark-III neural core...")
+        self.update_subs.emit("J.A.R.V.I.S.", "Calibrating systems...")
 
         self.speaker = SpeechEngine()
         self.ears = EarEngine()
         self.wake_detector = WakeWordDetector()
         self.ambient_sensor = AmbientMonitor()
+        self.agent_loop = AutonomousAgentLoop()
 
-        self.agent_loop = AutonomousAgentLoop(
-            step_callback=lambda tag, msg: self.update_subs.emit(tag, msg)
-        )
+        # Initialize background timer daemon
+        self.timer_daemon = TimerDaemon(alert_callback=self.on_timer_alert)
+        register_global_timer_daemon(self.timer_daemon)
 
-        time.sleep(0.5)
+        time.sleep(0.4)
         self.update_hud.emit("ONLINE")
-        self.update_subs.emit("J.A.R.V.I.S.", "Mark Three initialized. Full autonomy armed.")
+        self.update_subs.emit("J.A.R.V.I.S.", "Systems online and fully operational, sir.")
         SoundFX.chime_wake()
-        self.speaker.speak("Mark Three systems online. Ready, sir.")
+        self.speaker.speak("Systems nominal, sir. Standing by.")
 
         while self.running:
-            # 1. Standby & Ambient Checks
             if not self.trigger_mode:
                 if (time.time() - self.last_ambient_tick) > 6.0:
                     self.last_ambient_tick = time.time()
@@ -96,7 +106,7 @@ class Mark3CoreDaemon(QThread):
                     if alert_msg:
                         self.summon_hud.emit()
                         self.update_hud.emit("ALERT")
-                        self.update_subs.emit("VITALS", alert_msg)
+                        self.update_subs.emit("J.A.R.V.I.S.", alert_msg)
                         SoundFX.chime_abort()
                         self.speaker.speak(alert_msg)
                         self.update_hud.emit("ONLINE")
@@ -111,35 +121,42 @@ class Mark3CoreDaemon(QThread):
             current_mode = self.trigger_mode
             self.trigger_mode = None
 
-            # 2. Listening Phase
             if current_mode == "VISION":
                 self.update_hud.emit("VISION ACTIVE")
-                self.update_subs.emit("SYSTEM", "Optical sensors aligned. Listening...")
             else:
                 self.update_hud.emit("LISTENING")
-                self.update_subs.emit("SYSTEM", "Listening for mission parameters...")
 
-            spoken_goal = self.ears.listen_smart(max_duration=35, silence_tolerance=3.0)
+            spoken_goal = self.ears.listen_smart(max_duration=20, silence_tolerance=1.5)
 
             if self.abort_requested:
                 continue
 
             if not spoken_goal:
                 self.update_hud.emit("ONLINE")
-                self.update_subs.emit("SYSTEM", "No command registered. Resuming standby.")
                 continue
 
             self.update_subs.emit("YOU", spoken_goal)
 
+            # Voice command to reboot daemon via run.bat (Exit Code 42)
+            if any(kw in spoken_goal.lower() for kw in ["reboot", "restart core", "restart system"]):
+                SoundFX.chime_abort()
+                self.update_hud.emit("STANDBY")
+                self.update_subs.emit("J.A.R.V.I.S.", "Rebooting systems now, sir.")
+                self.speaker.speak("Rebooting systems now, sir.")
+                self.reboot_requested = True
+                self.running = False
+                QApplication.instance().exit(42)
+                break
+
             if spoken_goal.lower() in ["exit", "quit", "shutdown", "abort"]:
                 SoundFX.chime_abort()
                 self.update_hud.emit("STANDBY")
-                self.update_subs.emit("J.A.R.V.I.S.", "Shutting down Mark Three. Goodbye, sir.")
-                self.speaker.speak("Shutting down. Goodbye, sir.")
+                self.update_subs.emit("J.A.R.V.I.S.", "Shutting down. Have a good day, sir.")
+                self.speaker.speak("Shutting down. Have a good day, sir.")
                 self.running = False
+                QApplication.instance().quit()
                 break
 
-            # 3. Autonomous Execution Phase
             SoundFX.chime_thinking()
             self.update_hud.emit("PROCESSING")
 
@@ -148,7 +165,6 @@ class Mark3CoreDaemon(QThread):
             if self.abort_requested:
                 continue
 
-            # 4. Spoken Synthesis
             self.update_hud.emit("SPEAKING")
             self.update_subs.emit("J.A.R.V.I.S.", final_summary)
             self.speaker.speak(final_summary)
@@ -160,7 +176,7 @@ class Mark3CoreDaemon(QThread):
 
 def main():
     app = QApplication(sys.argv)
-    app.setQuitOnLastWindowClosed(False)  # Keeps tray alive even when HUD is hidden
+    app.setQuitOnLastWindowClosed(False)
 
     hud = JarvisHUD()
     hud.show()
@@ -170,7 +186,6 @@ def main():
 
     bridge = HotkeySignalBridge()
 
-    # Route all external thread events through Qt's safe signal queue
     bridge.trigger_voice_sig.connect(daemon.trigger_voice)
     bridge.trigger_vision_sig.connect(daemon.trigger_vision)
     bridge.toggle_hud_sig.connect(tray.toggle_hud_visibility)
@@ -182,7 +197,6 @@ def main():
 
     hud.reactor_triggered.connect(daemon.trigger_voice)
 
-    # Hook Keyboard cleanly into the Qt bridge
     try:
         keyboard.add_hotkey("ctrl+shift+space", bridge.trigger_voice_sig.emit)
         keyboard.add_hotkey("ctrl+shift+v", bridge.trigger_vision_sig.emit)
@@ -200,6 +214,7 @@ def main():
     keyboard.unhook_all()
     daemon.wait(1000)
     sys.exit(exit_code)
+
 
 if __name__ == "__main__":
     main()

@@ -57,3 +57,15 @@ J.A.R.V.I.S/
 ├── mark3_app.py           # Mark-3 autonomous system daemon (Master)
 ├── requirements.txt       # Python environment dependencies
 └── .gitignore             # Ignores .env and local databases
+
+Launch:
+
+For Mark-3 (Autonomous System Tray Daemon):
+
+python mark3_app.py
+For Mark-2 (Visual Desktop HUD):
+
+python mark2_app.py
+For Mark-1 (Lightweight CLI):
+
+python main.py
