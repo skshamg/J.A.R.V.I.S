@@ -1,20 +1,25 @@
+import ctypes
 import datetime
+import os
 import re
+import subprocess
+import threading
 from typing import Optional
 
-from tools.media_tools import control_media_playback, adjust_system_volume
+import psutil
+from tools.media_tools import adjust_system_volume, control_media_playback
 from tools.window_tools import manage_active_window
 
 
 def try_instant_reflex(command: str) -> Optional[str]:
     """
-    Evaluates spoken command for direct OS/hardware reflexes.
-    Returns spoken confirmation string if handled locally (0.05s latency),
+    Evaluates spoken commands against deterministic local hardware/OS handlers.
+    Returns spoken confirmation string if handled locally (0.04s latency),
     or None if the command requires the full Gemini autonomous brain.
     """
     cmd = command.lower().strip()
 
-    # 1. Volume Reflexes
+    # 1. Volume Controls
     if re.search(r"\b(volume\s+up|increase\s+volume|louder|turn\s+it\s+up)\b", cmd):
         adjust_system_volume("up")
         return "Volume raised, sir."
@@ -27,7 +32,7 @@ def try_instant_reflex(command: str) -> Optional[str]:
         adjust_system_volume("mute")
         return "Audio toggled, sir."
 
-    # 2. Media Playback Reflexes
+    # 2. Media Playback Controls
     if re.search(r"\b(pause(\s+music)?|stop\s+playback|pause\s+video)\b", cmd):
         control_media_playback("pause")
         return "Media paused."
@@ -44,7 +49,7 @@ def try_instant_reflex(command: str) -> Optional[str]:
         control_media_playback("previous")
         return "Previous track."
 
-    # 3. Workspace Window Reflexes
+    # 3. Workspace Window Controls
     if re.search(r"\b(show\s+desktop|minimize\s+all(\s+windows)?|clear\s+screen)\b", cmd):
         manage_active_window("minimize_all")
         return "Desktop cleared, sir."
@@ -61,7 +66,41 @@ def try_instant_reflex(command: str) -> Optional[str]:
         manage_active_window("close")
         return "Window closed."
 
-    # 4. Temporal Local Reflexes
+    # 4. App Launchers (Instant Subprocess Spawn)
+    if re.search(r"\b(open|launch|start)\s+(google\s+)?chrome\b", cmd):
+        subprocess.Popen(["cmd", "/c", "start", "chrome"], shell=True)
+        return "Opening Chrome, sir."
+
+    if re.search(r"\b(open|launch|start)\s+(code|vs\s*code|visual\s+studio\s+code)\b", cmd):
+        subprocess.Popen(["cmd", "/c", "code"], shell=True)
+        return "Launching VS Code."
+
+    if re.search(r"\b(open|launch|start)\s+(file\s+explorer|files|my\s+computer)\b", cmd):
+        subprocess.Popen(["explorer"], shell=True)
+        return "Opening File Explorer."
+
+    if re.search(r"\b(open|launch|start)\s+task\s+manager\b", cmd):
+        subprocess.Popen(["taskmgr"], shell=True)
+        return "Task Manager opened."
+
+    if re.search(r"\b(open|launch|start)\s+notepad\b", cmd):
+        subprocess.Popen(["notepad"], shell=True)
+        return "Notepad opened."
+
+    # 5. System Security & Hardware Vitals
+    if re.search(r"\b(lock\s+(pc|laptop|computer|windows|screen))\b", cmd):
+        ctypes.windll.user32.LockWorkStation()
+        return "Workstation locked, sir."
+
+    if re.search(r"\b(battery\s+(status|level|percentage)|how\s+much\s+battery)\b", cmd):
+        battery = psutil.sensors_battery()
+        if battery:
+            percent = int(battery.percent)
+            plugged = "plugged in" if battery.power_plugged else "on battery power"
+            return f"Battery is at {percent}%, {plugged}."
+        return "Battery telemetry unavailable, sir."
+
+    # 6. Temporal Local Reflexes
     if re.search(r"\b(what\s+time\s+is\s+it|current\s+time|tell\s+me\s+the\s+time)\b", cmd):
         now = datetime.datetime.now().strftime("%I:%M %p")
         return f"It is currently {now}, sir."

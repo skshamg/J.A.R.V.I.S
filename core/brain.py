@@ -4,6 +4,7 @@ import time
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from tools.vision_tools import click_element_on_screen, inspect_screen
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from tools.sys_tools import get_system_telemetry, launch_application, list_files_in_directory
@@ -43,6 +44,9 @@ DOCUMENT & APP AUTOMATION RULES:
    - Use `paste_text` to paste long structured reports into open windows in 0.05 seconds.
 3. OPENING APPS:
    - Call `launch_application` with the app name (e.g., 'vn editor', 'capcut', 'notepad'). The launcher dynamically searches all installed Windows apps. Do NOT open browser download links unless explicitly told to download an installer.
+4. VISION & SCREEN ANALYSIS:
+       * When asked about errors, code, open websites, or "what's on my screen", call `inspect_screen`.
+       * When asked to click, tap, or interact with a visible desktop button or link, call `click_element_on_screen`.
 
 SPOKEN VOICE CONVERSATION:
 - Spoken responses MUST be concise (1 to 2 short sentences).
@@ -80,7 +84,8 @@ class Mark1Brain:
                 press_system_key,
                 open_web_url,
                 remember,
-                recall,
+                recall,inspect_screen,
+                click_element_on_screen,
             ],
             temperature=0.2,
         )

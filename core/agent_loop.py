@@ -21,7 +21,7 @@ from tools.action_tools import (
 )
 from tools.shell_tools import run_powershell_command
 from tools.web_tools import web_search, read_web_page
-from tools.vision_tools import click_element_on_screen
+from tools.vision_tools import click_element_on_screen, inspect_screen
 from tools.startup_tools import set_windows_autostart
 from tools.media_tools import control_media_playback, adjust_system_volume, set_display_brightness
 from tools.window_tools import manage_active_window
@@ -39,7 +39,7 @@ class AutonomousAgentLoop:
             http_options=types.HttpOptions(timeout=25000)
         )
 
-        self.model_pool = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash"]
+        self.model_pool = ["gemini-flash-latest","gemini-3.8-flash"]
         self.current_model_idx = 0
         self.active_model = self.model_pool[self.current_model_idx]
         self.step_callback = step_callback
