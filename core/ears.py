@@ -6,6 +6,12 @@ import numpy as np
 import sounddevice as sd
 import speech_recognition as sr
 
+from core.speech import is_speaking, stop_speaking
+
+# Inside your audio read/VAD loop, right after RMS/energy crosses the speech threshold:
+if is_speaking():
+    stop_speaking()
+
 
 class EarEngine:
     def __init__(self, sample_rate: int = 16000):

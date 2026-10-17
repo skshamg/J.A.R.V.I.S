@@ -1,50 +1,67 @@
 import threading
+import time
 import winsound
 
 
-class SoundFX:
+class SoundFXEngine:
+    """Zero-dependency procedural acoustic engine for J.A.R.V.I.S."""
+
     @staticmethod
-    def _play_tones(tone_list):
-        for freq, duration in tone_list:
-            winsound.Beep(freq, duration)
+    def _play_async(fn, *args):
+        threading.Thread(target=fn, args=args, daemon=True).start()
 
     @classmethod
-    def chime_wake(cls):
-        """Ascending dual-tone futuristic activation chirp."""
-        threading.Thread(
-            target=cls._play_tones,
-            args=([(880, 70), (1320, 110)],),
-            daemon=True
-        ).start()
+    def ui_click(cls):
+        """Crisp mechanical button click."""
+        def _sound():
+            winsound.Beep(1800, 18)
+        cls._play_async(_sound)
 
     @classmethod
-    def chime_vision(cls):
-        """High-frequency triple-tone optical sweep cue."""
-        threading.Thread(
-            target=cls._play_tones,
-            args=([(1200, 60), (1600, 60), (2000, 90)],),
-            daemon=True
-        ).start()
+    def mode_lock(cls):
+        """Ascending dual-tone futuristic lock chime."""
+        def _sound():
+            winsound.Beep(980, 45)
+            winsound.Beep(1470, 70)
+        cls._play_async(_sound)
 
     @classmethod
-    def chime_thinking(cls):
-        """Subtle dual acknowledgment ping."""
-        threading.Thread(
-            target=cls._play_tones,
-            args=([(950, 50), (1100, 60)],),
-            daemon=True
-        ).start()
+    def explode_warp(cls):
+        """High-to-low magnetic displacement tone."""
+        def _sound():
+            for freq in (1200, 950, 720, 520):
+                winsound.Beep(freq, 25)
+        cls._play_async(_sound)
 
     @classmethod
-    def chime_abort(cls):
-        """Descending disengagement tone."""
-        threading.Thread(
-            target=cls._play_tones,
-            args=([(1400, 60), (700, 100)],),
-            daemon=True
-        ).start()
+    def reassemble_snap(cls):
+        """Low-to-high magnetic snap tone."""
+        def _sound():
+            for freq in (520, 750, 1100, 1500):
+                winsound.Beep(freq, 20)
+        cls._play_async(_sound)
+
+    @classmethod
+    def gesture_whoosh(cls):
+        """Subtle swept tone for workspace window minimization/swipes."""
+        def _sound():
+            winsound.Beep(650, 30)
+            winsound.Beep(450, 40)
+        cls._play_async(_sound)
+
+    @classmethod
+    def volume_tick(cls, direction="up"):
+        """Tactile rotary volume detent click."""
+        def _sound():
+            freq = 2100 if direction == "up" else 1400
+            winsound.Beep(freq, 12)
+        cls._play_async(_sound)
 
 
-if __name__ == "__main__":
-    print("Testing Acoustic UI...")
-    SoundFX.chime_wake()
+# Global helper shortcuts
+play_click = SoundFXEngine.ui_click
+play_lock = SoundFXEngine.mode_lock
+play_explode = SoundFXEngine.explode_warp
+play_snap = SoundFXEngine.reassemble_snap
+play_whoosh = SoundFXEngine.gesture_whoosh
+play_vol_tick = SoundFXEngine.volume_tick

@@ -148,7 +148,7 @@ class JarvisHUD(QWidget):
 
         self.title_lbl = QLabel("J.A.R.V.I.S.")
         self.title_lbl.setObjectName("TitleLabel")
-        self.sub_lbl = QLabel("MARK-III AUTONOMOUS AGENT CORE")
+        self.sub_lbl = QLabel("MARK-IV AUTONOMOUS AGENT CORE")
         self.sub_lbl.setObjectName("SubtitleLabel")
 
         title_box.addWidget(self.title_lbl)
@@ -181,7 +181,7 @@ class JarvisHUD(QWidget):
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFixedHeight(85)
 
-        self.subtitle_content = QLabel("J.A.R.V.I.S.: Mark Three online. Systems nominal...")
+        self.subtitle_content = QLabel("J.A.R.V.I.S.: Mark Four online. Systems nominal...")
         self.subtitle_content.setObjectName("SubtitleContent")
         self.subtitle_content.setWordWrap(True)
         self.subtitle_content.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
@@ -244,7 +244,7 @@ class JarvisHUD(QWidget):
             )
 
     def set_subtitles(self, speaker: str, text: str):
-        tag_color = "#00e5ff" if speaker in ["MARK-III", "J.A.R.V.I.S.", "COMPLETE"] else ("#00ff88" if speaker == "YOU" else "#ffaa00")
+        tag_color = "#00e5ff" if speaker in ["MARK-IV", "J.A.R.V.I.S.", "COMPLETE"] else ("#00ff88" if speaker == "YOU" else "#ffaa00")
         formatted = f'<p style="margin: 0px 0px 4px 0px;"><span style="color: {tag_color}; font-weight: bold;">[{speaker}]</span> {text}</p>'
         self.subtitle_content.setText(formatted)
         QTimer.singleShot(40, lambda: self.scroll_area.verticalScrollBar().setValue(

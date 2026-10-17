@@ -19,6 +19,24 @@ def try_instant_reflex(command: str) -> Optional[str]:
     """
     cmd = command.lower().strip()
 
+    # 0. NUCLEAR HARD SYSTEM SHUTDOWN
+    if re.search(r"\b(shut\s*down|power\s*off|terminate|exit|go\s+offline|close\s+jarvis|sleep\s+now)\b", cmd):
+        def _nuke():
+            import time
+            time.sleep(1.2)
+            # Kill camera if running
+            for proc in psutil.process_iter(['cmdline']):
+                try:
+                    cmdline = proc.info.get('cmdline')
+                    if cmdline and any(k in ' '.join(cmdline) for k in ('vision_hands.py', 'hologram_overlay.py')):
+                        proc.kill()
+                except Exception:
+                    pass
+            os._exit(0) 
+
+        threading.Thread(target=_nuke, daemon=True).start()
+        return "Shutting down operations, sir."
+    
     # 1. Volume Controls
     if re.search(r"\b(volume\s+up|increase\s+volume|louder|turn\s+it\s+up)\b", cmd):
         adjust_system_volume("up")
@@ -108,6 +126,23 @@ def try_instant_reflex(command: str) -> Optional[str]:
     if re.search(r"\b(what('s|\s+is)\s+today'?s\s+date|current\s+date)\b", cmd):
         today = datetime.datetime.now().strftime("%A, %B %d, %Y")
         return f"Today is {today}, sir."
+
+    # 7. Mark-4 Hand Tracking (Local offline camera execution)
+    if re.search(r"\b(open|launch|enable|start|activate|turn\s+on)\s+(hand\s+tracking|air\s*mouse|gestures)\b|\b(air\s*mouse\s+on)\b", cmd):
+        import sys
+        script_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "core", "vision_hands.py")
+        subprocess.Popen([sys.executable, script_path])
+        return "Air mouse protocols engaged, sir. Camera active."
+
+    if re.search(r"\b(close|disable|stop|deactivate|turn\s+off|kill)\s+(hand\s+tracking|air\s*mouse|gestures)\b|\b(air\s*mouse\s+off)\b", cmd):
+        for proc in psutil.process_iter(['cmdline']):
+            try:
+                cmdline = proc.info.get('cmdline')
+                if cmdline and any('vision_hands.py' in arg for arg in cmdline):
+                    proc.kill()
+            except Exception:
+                pass
+        return "Air mouse protocols disabled. Camera released."
 
     # Not an instant reflex -> delegate to Gemini
     return None

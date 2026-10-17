@@ -5,3 +5,12 @@
 [NEURAL ROUTE] Connecting via gemini-3.5-flash-lite...
 [COMPLETE] Objectives cleared.
 [WAKE HIT] Match: 'hey jarvis'
+[WAKE ENGINE] Asynchronous VAD Phoneme Engine online.
+[TTS Edge Fallback Notice]: 403, message='Invalid response status', url='wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=6A5AA1D4EAFF4E9FB37E23D68491D6F4&ConnectionId=f0befbf10e48485db15bb3c7241c4d61&Sec-MS-GEC=A06F76D1FBD65F552DC9EF35A55FA4DF312672C51304062C96348BDAB7B1C95B&Sec-MS-GEC-Version=1-143.0.3650.75'
+[MISSION START] JavaScript
+[NEURAL ROUTE] Connecting via gemini-flash-latest...
+[COMPLETE] Objectives cleared.
+[MISSION START] Jarvis close yourself quit
+[NEURAL ROUTE] Connecting via gemini-flash-latest...
+[COMPLETE] Objectives cleared.
+[TTS Edge Fallback Notice]: Cannot connect to host speech.platform.bing.com:443 ssl:<ssl.SSLContext object at 0x0000023E1B4720D0> [The specified network name is no longer available]
